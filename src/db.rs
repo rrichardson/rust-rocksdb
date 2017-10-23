@@ -692,7 +692,7 @@ impl DB {
             path: path.to_path_buf(),
         })
     }
-
+/*
     pub fn list_cf<P: AsRef<Path>>(opts: &Options, path: P) -> Result<Vec<String>, Error> {
         let path = path.as_ref();
         let cpath = match CString::new(path.to_string_lossy().as_bytes()) {
@@ -722,7 +722,7 @@ impl DB {
             Ok(vec)
         }
     }
-
+*/
 
     pub fn destroy<P: AsRef<Path>>(opts: &Options, path: P) -> Result<(), Error> {
         let cpath = CString::new(path.as_ref().to_string_lossy().as_bytes()).unwrap();
