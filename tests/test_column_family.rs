@@ -14,7 +14,7 @@
 //
 extern crate rocksdb;
 
-use rocksdb::{DB, MergeOperands, Options};
+use rocksdb::{DB, MergeOperands, Options, ColumnFamilyDescriptor};
 
 #[test]
 pub fn test_column_family() {
@@ -34,7 +34,7 @@ pub fn test_column_family() {
             }
         }
     }
-
+/*
     // should fail to open db without specifying same column families
     {
         let mut opts = Options::default();
@@ -62,14 +62,14 @@ pub fn test_column_family() {
             Err(e) => panic!("failed to open db with column family: {}", e),
         }
     }
-
+    */
     // should be able to list a cf
     {
         let opts = Options::default();
         let vec = DB::list_cf(&opts, path);
         match vec {
             Ok(vec) => assert_eq!(vec, vec!["default", "cf1"]),
-            Err(e) => panic!("failed to drop column family: {}", e),
+            Err(e) => panic!("failed to list CF's: {}", e),
         }
     }
 
@@ -79,12 +79,33 @@ pub fn test_column_family() {
     // TODO should be able to iterate over a cf
     {
     }
+    /*
     // should b able to drop a cf
     {
         let mut db = DB::open_cf(&Options::default(), path, &["cf1"]).unwrap();
         match db.drop_cf("cf1") {
             Ok(_) => println!("cf1 successfully dropped."),
             Err(e) => panic!("failed to drop column family: {}", e),
+        }
+    }
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+    */
+}
+
+#[ignore]
+#[test]
+fn test_create_missing_column_family() {
+    let path = "_rust_rocksdb_missing_cftest";
+
+    // should be able to create new column families when opening a new database
+    {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        match DB::open_cf(&opts, path, &["cf1"]) {
+            Ok(_) => println!("successfully created new column family"),
+            Err(e) => panic!("failed to create new column family: {}", e),
         }
     }
 
@@ -157,4 +178,45 @@ fn test_provided_merge(_: &[u8],
         }
     }
     Some(result)
+}
+
+#[ignore]
+#[test]
+pub fn test_column_family_with_options() {
+    let path = "_rust_rocksdb_cf_with_optionstest";
+    {
+        let mut cfopts = Options::default();
+        cfopts.set_max_write_buffer_number(16);
+        let cf_descriptor = ColumnFamilyDescriptor::new("cf1", cfopts);
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        let cfs = vec![cf_descriptor];
+        match DB::open_cf_descriptors(&opts, path, cfs) {
+            Ok(_) => println!("created db with column family descriptors succesfully"),
+            Err(e) => {
+                panic!("could not create new database with column family descriptors: {}", e);
+            }
+        }
+    }
+
+    {
+        let mut cfopts = Options::default();
+        cfopts.set_max_write_buffer_number(16);
+        let cf_descriptor = ColumnFamilyDescriptor::new("cf1", cfopts);
+
+        let opts = Options::default();
+        let cfs = vec![cf_descriptor];
+
+        match DB::open_cf_descriptors(&opts, path, cfs) {
+            Ok(_) => println!("succesfully re-opened database with column family descriptorrs"),
+            Err(e) => {
+                panic!("unable to re-open database with column family descriptors: {}", e);
+            }
+        }
+    }
+
+    assert!(DB::destroy(&Options::default(), path).is_ok());
 }
