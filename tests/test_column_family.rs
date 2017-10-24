@@ -56,30 +56,32 @@ pub fn test_column_family() {
     // should properly open db when specyfing all column families
     {
         let mut opts = Options::default();
+        opts.create_if_missing(true);
         opts.set_merge_operator("test operator", test_provided_merge, None);
         match DB::open_cf(&opts, path, &["cf1"]) {
             Ok(_) => println!("successfully opened db with column family"),
             Err(e) => panic!("failed to open db with column family: {}", e),
         }
     }
-    /*  TODO  list_cf currently broken and therefore removed
+    /* list_cf is borken for some reason
     // should be able to list a cf
     {
-        let opts = Options::default();
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_merge_operator("test operator", test_provided_merge, None);
         let vec = DB::list_cf(&opts, path);
         match vec {
             Ok(vec) => assert_eq!(vec, vec!["default", "cf1"]),
             Err(e) => panic!("failed to list CF's: {}", e),
         }
     }
-    */ 
+    */
     // TODO should be able to use writebatch ops with a cf
     {
     }
     // TODO should be able to iterate over a cf
     {
     }
-    /*
     // should b able to drop a cf
     {
         let mut db = DB::open_cf(&Options::default(), path, &["cf1"]).unwrap();
@@ -89,7 +91,6 @@ pub fn test_column_family() {
         }
     }
     assert!(DB::destroy(&Options::default(), path).is_ok());
-    */
 }
 
 #[ignore]

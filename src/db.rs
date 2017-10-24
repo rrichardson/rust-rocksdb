@@ -20,7 +20,7 @@ use ffi_util::opt_bytes_to_ptr;
 
 use libc::{self, c_char, c_int, c_uchar, c_void, size_t};
 use std::collections::BTreeMap;
-use std::ffi::CString;
+use std::ffi::{ CString, CStr };
 use std::fmt;
 use std::fs;
 use std::ops::Deref;
@@ -692,38 +692,34 @@ impl DB {
             path: path.to_path_buf(),
         })
     }
-/*
+/* TODO - figure out why this works
+ *
     pub fn list_cf<P: AsRef<Path>>(opts: &Options, path: P) -> Result<Vec<String>, Error> {
         let path = path.as_ref();
         let cpath = match CString::new(path.to_string_lossy().as_bytes()) {
             Ok(c) => c,
             Err(_) => {
-                return Err(Error::new(
-                    "Failed to convert path to CString \
+                return Err(Error::new("Failed to convert path to CString \
                                        when opening DB."
-                        .to_owned(),
-                ))
+                                      .to_owned()))
             }
         };
-
         let mut length = 0;
-
         unsafe {
-            let ptr = ffi_try!(ffi::rocksdb_list_column_families(
-                opts.inner,
-                cpath.as_ptr() as *const _,
-                &mut length,
-            ));
+            let ptr = ffi_try!(ffi::rocksdb_list_column_families(opts.inner,
+                                                                 cpath.as_ptr() as *const _,
+                                                                 &mut length as *mut _,));
 
-            let vec = Vec::from_raw_parts(ptr, length, length)
-                .iter()
-                .map(|&ptr| CString::from_raw(ptr).into_string().unwrap())
-                .collect();
+            let vec = Vec::from_raw_parts(ptr, length, length).iter().map(|&p| {
+                CStr::from_ptr(p).to_string_lossy().to_string()
+            }).collect();
+
+            ffi::rocksdb_list_column_families_destroy(ptr, length);
+
             Ok(vec)
         }
     }
 */
-
     pub fn destroy<P: AsRef<Path>>(opts: &Options, path: P) -> Result<(), Error> {
         let cpath = CString::new(path.as_ref().to_string_lossy().as_bytes()).unwrap();
         unsafe {
