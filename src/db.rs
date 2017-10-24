@@ -580,6 +580,14 @@ impl ColumnFamilyDescriptor {
             options
         }
     }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn options(&self) -> &Options {
+        &self.options
+    }
 }
 
 impl DB {
