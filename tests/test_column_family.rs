@@ -93,7 +93,6 @@ pub fn test_column_family() {
     assert!(DB::destroy(&Options::default(), path).is_ok());
 }
 
-#[ignore]
 #[test]
 fn test_create_missing_column_family() {
     let path = "_rust_rocksdb_missing_cftest";
@@ -114,12 +113,13 @@ fn test_create_missing_column_family() {
 }
 
 #[test]
-#[ignore]
 fn test_merge_operator() {
     let path = "_rust_rocksdb_cftest_merge";
     // TODO should be able to write, read, merge, batch, and iterate over a cf
     {
         let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
         opts.set_merge_operator("test operator", test_provided_merge, None);
         let db = match DB::open_cf(&opts, path, &["cf1"]) {
             Ok(db) => {
@@ -181,12 +181,12 @@ fn test_provided_merge(_: &[u8],
     Some(result)
 }
 
-#[ignore]
 #[test]
 pub fn test_column_family_with_options() {
     let path = "_rust_rocksdb_cf_with_optionstest";
     {
         let mut cfopts = Options::default();
+        cfopts.create_if_missing(true);
         cfopts.set_max_write_buffer_number(16);
         let cf_descriptor = ColumnFamilyDescriptor::new("cf1", cfopts);
 
