@@ -203,3 +203,6 @@ pub struct WriteOptions {
 pub struct ColumnFamily {
     inner: *mut ffi::rocksdb_column_family_handle_t,
 }
+
+unsafe impl Send for ColumnFamily {}
+unsafe impl Sync for ColumnFamily {}
