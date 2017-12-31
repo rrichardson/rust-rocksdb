@@ -18,6 +18,7 @@ addons:
       - clang-3.9
 
 script:
+  - rm -f ~/.cargo/bin/libcache/librocksdb.a
   - cargo test --manifest-path=librocksdb-sys/Cargo.toml
   - cargo test
 
