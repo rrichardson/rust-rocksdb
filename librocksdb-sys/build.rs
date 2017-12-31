@@ -5,6 +5,10 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+macro_rules! return_some {
+    ( $e:expr ) => ( let v = $e; if v.is_some() { return v; } );
+}
+
 fn link(name: &str, bundled: bool) {
     use std::env::var;
     let target = var("TARGET").unwrap();
@@ -29,6 +33,40 @@ fn fail_on_empty_directory(name: &str) {
     }
 }
 
+fn find_cache_dir(filename: &'static str) -> Option<PathBuf> {
+
+    let lib_exists = |pbdir: PathBuf| -> Option<PathBuf> {
+        let p = pbdir.join(filename);
+        if fs::metadata(p).is_ok() {
+            Some(pbdir)
+        } else {
+            None
+        }
+    };
+
+    return_some!(env::var("LIBROCKSDB_DIR").map(PathBuf::from).ok().and_then(&lib_exists));
+    return_some!(env::var("CARGO_HOME").map(|d| PathBuf::from(d).join("libcache")).ok().and_then(&lib_exists));
+    return_some!(env::home_dir().map(|d| PathBuf::from(d).join(".cargo").join("libcache")).and_then(&lib_exists));
+    None
+}
+
+fn write_cached_lib(cachedir: Option<&str>, filename: &str) -> Option<u64> {
+    let find_dir = |dir: Option<&str>| {
+        return_some!(dir.map(PathBuf::from));
+        return_some!(env::var("LIBROCKSDB_DIR").map(PathBuf::from).ok());
+        return_some!(env::var("CARGO_HOME").map(|d| PathBuf::from(d).join("libcache")).ok());
+        return_some!(env::home_dir().map(|d| PathBuf::from(d).join(".cargo").join("libcache")));
+        None
+    };
+
+    if let (Some(cache_dir), Some(output_dir)) = (find_dir(cachedir), env::var("OUT_DIR").map(PathBuf::from).ok()) {
+       fs::create_dir_all(&cache_dir).expect(&format!("failed to create lib cache dir {:?}", cache_dir));
+       fs::copy(output_dir.join(filename), cache_dir.join(filename)).ok()
+    } else {
+        None
+    }
+}
+
 fn build_rocksdb() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=rocksdb/");
@@ -44,6 +82,13 @@ fn build_rocksdb() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("unable to write rocksdb bindings");
+
+    if let (Some(cache_dir), Some(output_dir)) = (find_cache_dir("librocksdb.a"), env::var("OUT_DIR").map(PathBuf::from).ok()) {
+        if fs::copy(cache_dir.join("librocksdb.a"), output_dir.join("librocksdb.a")).is_ok() {;
+            println!("Copied cached librocksdb.a from {:?} to {:?}", cache_dir, output_dir);
+            return;
+        }
+    }
 
     let mut config = cc::Build::new();
     config.include("rocksdb/include/");
@@ -127,6 +172,7 @@ fn build_rocksdb() {
 
     config.cpp(true);
     config.compile("librocksdb.a");
+    write_cached_lib(None, "librocksdb.a");
 }
 
 fn build_snappy() {
