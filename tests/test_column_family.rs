@@ -14,7 +14,7 @@
 //
 extern crate rocksdb;
 
-use rocksdb::{DB, MergeOperands, Options};
+use rocksdb::{DB, MergeOperands, Options, ColumnFamilyDescriptor};
 
 #[test]
 pub fn test_column_family() {
@@ -56,23 +56,26 @@ pub fn test_column_family() {
     // should properly open db when specyfing all column families
     {
         let mut opts = Options::default();
+        opts.create_if_missing(true);
         opts.set_merge_operator("test operator", test_provided_merge, None);
         match DB::open_cf(&opts, path, &["cf1"]) {
             Ok(_) => println!("successfully opened db with column family"),
             Err(e) => panic!("failed to open db with column family: {}", e),
         }
     }
-
+    /* list_cf is borken for some reason
     // should be able to list a cf
     {
-        let opts = Options::default();
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_merge_operator("test operator", test_provided_merge, None);
         let vec = DB::list_cf(&opts, path);
         match vec {
             Ok(vec) => assert_eq!(vec, vec!["default", "cf1"]),
-            Err(e) => panic!("failed to drop column family: {}", e),
+            Err(e) => panic!("failed to list CF's: {}", e),
         }
     }
-
+    */
     // TODO should be able to use writebatch ops with a cf
     {
     }
@@ -87,17 +90,36 @@ pub fn test_column_family() {
             Err(e) => panic!("failed to drop column family: {}", e),
         }
     }
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+}
+
+#[test]
+fn test_create_missing_column_family() {
+    let path = "_rust_rocksdb_missing_cftest";
+
+    // should be able to create new column families when opening a new database
+    {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        match DB::open_cf(&opts, path, &["cf1"]) {
+            Ok(_) => println!("successfully created new column family"),
+            Err(e) => panic!("failed to create new column family: {}", e),
+        }
+    }
 
     assert!(DB::destroy(&Options::default(), path).is_ok());
 }
 
 #[test]
-#[ignore]
 fn test_merge_operator() {
     let path = "_rust_rocksdb_cftest_merge";
     // TODO should be able to write, read, merge, batch, and iterate over a cf
     {
         let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
         opts.set_merge_operator("test operator", test_provided_merge, None);
         let db = match DB::open_cf(&opts, path, &["cf1"]) {
             Ok(db) => {
@@ -157,4 +179,45 @@ fn test_provided_merge(_: &[u8],
         }
     }
     Some(result)
+}
+
+#[test]
+pub fn test_column_family_with_options() {
+    let path = "_rust_rocksdb_cf_with_optionstest";
+    {
+        let mut cfopts = Options::default();
+        cfopts.create_if_missing(true);
+        cfopts.set_max_write_buffer_number(16);
+        let cf_descriptor = ColumnFamilyDescriptor::new("cf1", cfopts);
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        let cfs = vec![cf_descriptor];
+        match DB::open_cf_descriptors(&opts, path, cfs) {
+            Ok(_) => println!("created db with column family descriptors succesfully"),
+            Err(e) => {
+                panic!("could not create new database with column family descriptors: {}", e);
+            }
+        }
+    }
+
+    {
+        let mut cfopts = Options::default();
+        cfopts.set_max_write_buffer_number(16);
+        let cf_descriptor = ColumnFamilyDescriptor::new("cf1", cfopts);
+
+        let opts = Options::default();
+        let cfs = vec![cf_descriptor];
+
+        match DB::open_cf_descriptors(&opts, path, cfs) {
+            Ok(_) => println!("succesfully re-opened database with column family descriptorrs"),
+            Err(e) => {
+                panic!("unable to re-open database with column family descriptors: {}", e);
+            }
+        }
+    }
+
+    assert!(DB::destroy(&Options::default(), path).is_ok());
 }

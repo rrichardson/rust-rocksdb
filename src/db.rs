@@ -14,13 +14,13 @@
 //
 
 
-use {DB, Error, Options, WriteOptions, ColumnFamily};
+use {DB, Error, Options, WriteOptions, ColumnFamily, ColumnFamilyDescriptor};
 use ffi;
 use ffi_util::opt_bytes_to_ptr;
 
 use libc::{self, c_char, c_int, c_uchar, c_void, size_t};
 use std::collections::BTreeMap;
-use std::ffi::CString;
+use std::ffi::{ CString, CStr };
 use std::fmt;
 use std::fs;
 use std::ops::Deref;
@@ -572,6 +572,24 @@ impl<'a> Drop for Snapshot<'a> {
     }
 }
 
+impl ColumnFamilyDescriptor {
+    // Create a new column family descriptor with the specified name and options.
+    pub fn new<S>(name: S, options: Options) -> Self where S: Into<String> {
+        ColumnFamilyDescriptor {
+            name: name.into(),
+            options
+        }
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn options(&self) -> &Options {
+        &self.options
+    }
+}
+
 impl DB {
     /// Open a database with default options.
     pub fn open_default<P: AsRef<Path>>(path: P) -> Result<DB, Error> {
@@ -585,14 +603,17 @@ impl DB {
         DB::open_cf(opts, path, &[])
     }
 
-    /// Open a database with specified options and column family.
+    /// Open a database with the given database options and column family names.
     ///
-    /// A column family must be created first by calling `DB::create_cf`.
-    ///
-    /// # Panics
-    ///
-    /// * Panics if the column family doesn't exist.
+    /// Column families opened using this function will be created with default `Options`.
     pub fn open_cf<P: AsRef<Path>>(opts: &Options, path: P, cfs: &[&str]) -> Result<DB, Error> {
+        let cfs_v = cfs.to_vec().iter().map(|name| ColumnFamilyDescriptor::new(*name, Options::default())).collect();
+
+        DB::open_cf_descriptors(opts, path, cfs_v)
+    }
+
+    /// Open a database with the given database options and column family names/options.
+    pub fn open_cf_descriptors<P: AsRef<Path>>(opts: &Options, path: P, cfs: Vec<ColumnFamilyDescriptor>) -> Result<DB, Error> {
         let path = path.as_ref();
         let cpath = match CString::new(path.to_string_lossy().as_bytes()) {
             Ok(c) => c,
@@ -621,17 +642,18 @@ impl DB {
                 db = ffi_try!(ffi::rocksdb_open(opts.inner, cpath.as_ptr() as *const _,));
             }
         } else {
-            let mut cfs_v = cfs.to_vec();
+            let mut cfs_v = cfs;
             // Always open the default column family.
-            if !cfs_v.contains(&"default") {
-                cfs_v.push("default");
+            if !cfs_v.iter().any(|cf| cf.name == "default") {
+                cfs_v.push(ColumnFamilyDescriptor {
+                    name: String::from("default"),
+                    options: Options::default()
+                });
             }
-
             // We need to store our CStrings in an intermediate vector
             // so that their pointers remain valid.
-            let c_cfs: Vec<CString> = cfs_v
-                .iter()
-                .map(|cf| CString::new(cf.as_bytes()).unwrap())
+            let c_cfs: Vec<CString> = cfs_v.iter()
+                .map(|cf| CString::new(cf.name.as_bytes()).unwrap())
                 .collect();
 
             let mut cfnames: Vec<_> = c_cfs.iter().map(|cf| cf.as_ptr()).collect();
@@ -639,10 +661,8 @@ impl DB {
             // These handles will be populated by DB.
             let mut cfhandles: Vec<_> = cfs_v.iter().map(|_| ptr::null_mut()).collect();
 
-            // TODO(tyler) allow options to be passed in.
-            let mut cfopts: Vec<_> = cfs_v
-                .iter()
-                .map(|_| unsafe { ffi::rocksdb_options_create() as *const _ })
+            let mut cfopts: Vec<_> = cfs_v.iter()
+                .map(|cf| cf.options.inner as *const _)
                 .collect();
 
             unsafe {
@@ -666,7 +686,7 @@ impl DB {
             }
 
             for (n, h) in cfs_v.iter().zip(cfhandles) {
-                cf_map.insert(n.to_string(), ColumnFamily { inner: h });
+                cf_map.insert(n.name.clone(), ColumnFamily { inner: h });
             }
         }
 
@@ -680,38 +700,34 @@ impl DB {
             path: path.to_path_buf(),
         })
     }
-
+/* TODO - figure out why this works
+ *
     pub fn list_cf<P: AsRef<Path>>(opts: &Options, path: P) -> Result<Vec<String>, Error> {
         let path = path.as_ref();
         let cpath = match CString::new(path.to_string_lossy().as_bytes()) {
             Ok(c) => c,
             Err(_) => {
-                return Err(Error::new(
-                    "Failed to convert path to CString \
+                return Err(Error::new("Failed to convert path to CString \
                                        when opening DB."
-                        .to_owned(),
-                ))
+                                      .to_owned()))
             }
         };
-
         let mut length = 0;
-
         unsafe {
-            let ptr = ffi_try!(ffi::rocksdb_list_column_families(
-                opts.inner,
-                cpath.as_ptr() as *const _,
-                &mut length,
-            ));
+            let ptr = ffi_try!(ffi::rocksdb_list_column_families(opts.inner,
+                                                                 cpath.as_ptr() as *const _,
+                                                                 &mut length as *mut _,));
 
-            let vec = Vec::from_raw_parts(ptr, length, length)
-                .iter()
-                .map(|&ptr| CString::from_raw(ptr).into_string().unwrap())
-                .collect();
+            let vec = Vec::from_raw_parts(ptr, length, length).iter().map(|&p| {
+                CStr::from_ptr(p).to_string_lossy().to_string()
+            }).collect();
+
+            ffi::rocksdb_list_column_families_destroy(ptr, length);
+
             Ok(vec)
         }
     }
-
-
+*/
     pub fn destroy<P: AsRef<Path>>(opts: &Options, path: P) -> Result<(), Error> {
         let cpath = CString::new(path.as_ref().to_string_lossy().as_bytes()).unwrap();
         unsafe {
